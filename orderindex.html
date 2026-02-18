@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Order Panel</title>
+
+<style>
+body{font-family:system-ui;background:#f4f6f9;margin:0}
+.container{max-width:1200px;margin:auto;padding:20px}
+h2{margin-bottom:20px}
+
+.topbar{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:15px}
+input,select{
+  padding:8px;
+  border-radius:6px;
+  border:1px solid #ddd;
+}
+
+.summary{display:flex;gap:15px;margin-bottom:20px;flex-wrap:wrap}
+.summary-box{
+  background:white;
+  padding:15px;
+  border-radius:10px;
+  box-shadow:0 3px 8px rgba(0,0,0,0.08);
+  min-width:150px;
+}
+
+.card{
+  background:white;
+  padding:15px;
+  border-radius:12px;
+  margin-bottom:15px;
+  box-shadow:0 3px 10px rgba(0,0,0,0.08);
+}
+
+.status{
+  padding:4px 10px;
+  border-radius:20px;
+  color:white;
+  font-size:12px;
+}
+
+/* Status colors */
+.Pending { background:#f39c12; }
+.Accepted { background:#3498db; }
+.Rejected { background:#e74c3c; }
+.Shipped { background:#9b59b6; }
+.Delivered { background:#2ecc71; }
+.Cancelled { background:gray; }
+.Out-of-Delivery { background:#d35400; }
+
+button{
+  padding:6px 10px;
+  border:none;
+  border-radius:6px;
+  cursor:pointer;
+  font-size:13px;
+  background:#34495e;
+  color:white;
+  margin-right:5px;
+}
+
+.modal{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,0.5);
+  display:none;
+  justify-content:center;
+  align-items:center;
+}
+
+.modal-content{
+  background:white;
+  width:95%;
+  max-width:750px;
+  padding:20px;
+  border-radius:12px;
+  max-height:90vh;
+  overflow:auto;
+}
+
+img{
+  width:60px;
+  height:60px;
+  object-fit:cover;
+  border-radius:6px;
+}
+
+textarea{
+  resize:none;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h2>Admin Order Management</h2>
+
+<div class="topbar">
+  <input type="text" id="searchInput" placeholder="Search ID / Name / Phone">
+  <select id="statusFilter">
+    <option value="">All Status</option>
+    <option>Pending</option>
+    <option>Accepted</option>
+    <option>Shipped</option>
+    <option>Out of Delivery</option>
+    <option>Delivered</option>
+    <option>Cancelled</option>
+  </select>
+  <button onclick="loadOrders()">Filter</button>
+</div>
+
+<div class="summary">
+  <div class="summary-box">
+    <b>Total Orders</b>
+    <div id="totalOrders">0</div>
+  </div>
+  <div class="summary-box">
+    <b>Total Sales</b>
+    <div id="totalSales">₹0</div>
+  </div>
+</div>
+
+<div id="orders"></div>
+
+</div>
+
+<div class="modal" id="orderModal">
+  <div class="modal-content" id="modalContent"></div>
+</div>
+
+<script type="module">
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm"
+
+const supabase = createClient(
+  "https://ooiumaohawwtqtiodqcv.supabase.co",
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9vaXVtYW9oYXd3dHF0aW9kcWN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzExNDQ1MjMsImV4cCI6MjA4NjcyMDUyM30.S_1J8CFMa1KJUYfk1VYeUcFRqUo23NEGzNlxr5fQsvA"
+)
+
+const ordersDiv = document.getElementById("orders")
+const searchInput = document.getElementById("searchInput")
+const statusFilter = document.getElementById("statusFilter")
+const totalOrders = document.getElementById("totalOrders")
+const totalSales = document.getElementById("totalSales")
+
+function statusClass(status){
+  return status.replace(/ /g,'-')
+}
+
+async function loadOrders(){
+  let query = supabase.from("orders").select("*").order("id",{ascending:false})
+  if(statusFilter.value) query = query.eq("status",statusFilter.value)
+  const { data } = await query
+
+  let searchText = searchInput.value.toLowerCase()
+  let filtered = data.filter(order =>
+    order.id.toString().includes(searchText) ||
+    order.customer_name.toLowerCase().includes(searchText) ||
+    order.customer_phone.includes(searchText)
+  )
+
+  ordersDiv.innerHTML=""
+  totalOrders.innerText = filtered.length
+  let sales = 0
+
+  filtered.forEach(order=>{
+    sales += Number(order.total_amount)
+    ordersDiv.innerHTML += `
+      <div class="card">
+        <b>Order #${order.id}</b><br>
+        ${order.customer_name}<br>
+        ₹${order.total_amount}<br><br>
+        Status: <span class="status ${statusClass(order.status)}">${order.status}</span><br><br>
+        <button onclick="viewOrder(${order.id})">View Details</button>
+      </div>
+    `
+  })
+  totalSales.innerText="₹"+sales.toFixed(2)
+}
+
+window.viewOrder = async function(orderId){
+  const { data:order } = await supabase.from("orders").select("*").eq("id",orderId).single()
+  const { data:items } = await supabase.from("order_items")
+    .select("quantity, price, subtotal, product:products(id,name,images)")
+    .eq("order_id",orderId)
+
+  let subtotal=0
+  let html=`
+    <div id="shippingData"
+      data-id="${order.id}"
+      data-name="${order.customer_name}"
+      data-phone="${order.customer_phone}"
+      data-address="${order.address}"
+      data-city="${order.city}"
+      data-state="${order.state}"
+      data-pin="${order.pin_code}"
+      data-payment="${order.payment_method || 'COD'}">
+    </div>
+
+    <h3>Order #${order.id}</h3>
+    <p><b>Name:</b> ${order.customer_name}</p>
+    <p><b>Phone:</b> ${order.customer_phone}</p>
+    <p><b>Address:</b> ${order.address}, ${order.city}, ${order.state} - ${order.pin_code}</p>
+    <hr>
+    <h4>Items</h4>
+  `
+
+  items.forEach(item=>{
+    const prodName = item.product?.name || 'Unknown Product'
+    const img = item.product?.images?.[0] || 'https://via.placeholder.com/60'
+    const price = Number(item.price) || 0
+    const qty = Number(item.quantity) || 0
+    const itemTotal = price * qty
+    subtotal += itemTotal
+
+    html+=`
+      <div style="display:flex;align-items:center;margin-bottom:10px;">
+        <img src="${img}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;">
+        <div style="margin-left:10px;">
+          <b>${prodName}</b><br>
+          ₹${price} × ${qty} = ₹${itemTotal.toFixed(2)}
+        </div>
+      </div>
+    `
+  })
+
+  let discount = Number(order.discount_amount) || 0
+  let grand = subtotal - discount
+  if(grand < 0) grand = 0
+
+  html+=`
+    <hr>
+    <p>Subtotal: ₹${subtotal.toFixed(2)}</p>
+    <p>Discount: ₹${discount.toFixed(2)}</p>
+    <h3>Total: ₹${grand.toFixed(2)}</h3>
+    <br>
+    <select id="statusSelect" onchange="updateStatus(${order.id},this.value)">
+      <option value="Pending" ${order.status==='Pending'?'selected':''}>Pending</option>
+      <option value="Accepted" ${order.status==='Accepted'?'selected':''}>Accepted</option>
+      <option value="Shipped" ${order.status==='Shipped'?'selected':''}>Shipped</option>
+      <option value="Out of Delivery" ${order.status==='Out of Delivery'?'selected':''}>Out of Delivery</option>
+      <option value="Delivered" ${order.status==='Delivered'?'selected':''}>Delivered</option>
+      <option value="Cancelled" ${order.status==='Cancelled'?'selected':''}>Cancelled</option>
+    </select>
+    <br><br>
+    <label><b>Order Note / Message:</b></label><br>
+    <textarea id="orderMessage" placeholder="Type your note here..." style="width:100%;padding:8px;border-radius:6px;border:1px solid #ddd;margin-bottom:10px;height:80px;">${order.message || ''}</textarea>
+    <br>
+    <button onclick="saveOrderMessage(${order.id})" style="background:#27ae60;">Save Note</button>
+    <button onclick="printShippingLabel()">Print Shipping Label</button>
+    <button onclick="closeModal()">Close</button>
+    <button onclick="exportToCSV()">Export CSV</button>
+  `
+
+  document.getElementById("modalContent").innerHTML=html
+  document.getElementById("orderModal").style.display="flex"
+}
+
+window.closeModal=function(){ document.getElementById("orderModal").style.display="none" }
+
+window.updateStatus=async function(orderId,status){
+  await supabase.from("orders").update({status:status}).eq("id",orderId)
+  alert("Status Updated")
+  closeModal()
+  loadOrders()
+}
+
+window.saveOrderMessage = async function(orderId){
+  const msg = document.getElementById("orderMessage").value
+  const { error } = await supabase.from("orders").update({message: msg}).eq("id", orderId)
+  if(error){
+    alert("Error saving message: "+error.message)
+  }else{
+    alert("Order note saved!")
+    loadOrders()
+  }
+}
+
+window.printShippingLabel=function(){
+  const data=document.getElementById("shippingData")
+  const orderId=data.dataset.id
+  const name=data.dataset.name
+  const phone=data.dataset.phone
+  const address=data.dataset.address
+  const city=data.dataset.city
+  const state=data.dataset.state
+  const pin=data.dataset.pin
+  const payment=data.dataset.payment
+  const barcode="*"+orderId+"*"
+  const printWindow=window.open('','','width=600,height=700')
+  printWindow.document.write(`
+    <html>
+    <head>
+    <style>
+    body{font-family:Arial;padding:20px}
+    .label{border:2px solid black;padding:15px;width:350px}
+    .logo{text-align:center;font-weight:bold;font-size:18px;margin-bottom:10px}
+    .barcode{text-align:center;font-size:26px;letter-spacing:4px;margin-top:10px}
+    </style>
+    </head>
+    <body>
+      <div class="label">
+        <div class="logo">MyShop</div>
+        <b>Order ID:</b> ${orderId}<br><br>
+        <b>Customer:</b> ${name}<br>
+        <b>Phone:</b> ${phone}<br><br>
+        <b>Address:</b><br>
+        ${address}<br>
+        ${city}, ${state} - ${pin}<br><br>
+        <b>Payment:</b> ${payment}
+        <div class="barcode">${barcode}</div>
+      </div>
+    </body>
+    </html>
+  `)
+  printWindow.document.close()
+  printWindow.print()
+}
+
+loadOrders()
+</script>
+
+</body>
+</html>
