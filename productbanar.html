@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Panel - MyShop</title>
+
+<style>
+body{
+  margin:0;
+  font-family:system-ui;
+  background:#f1f3f6;
+}
+
+.header{
+  background:#111;
+  color:white;
+  padding:12px;
+  text-align:center;
+  font-size:18px;
+}
+
+.container{
+  padding:15px;
+  margin-bottom:80px;
+}
+
+h2{
+  margin-top:25px;
+}
+
+form{
+  background:white;
+  padding:15px;
+  border-radius:10px;
+  margin-bottom:20px;
+  box-shadow:0 2px 8px rgba(0,0,0,0.08);
+}
+
+input, select{
+  width:100%;
+  padding:8px;
+  margin-bottom:8px;
+  border-radius:6px;
+  border:1px solid #ccc;
+}
+
+button{
+  padding:8px;
+  border:none;
+  border-radius:6px;
+  cursor:pointer;
+}
+
+.add-btn{
+  background:#2874f0;
+  color:white;
+  width:100%;
+}
+
+.edit-btn{
+  background:#ffa000;
+  color:white;
+}
+
+.delete-btn{
+  background:#d32f2f;
+  color:white;
+}
+
+.card{
+  background:white;
+  padding:10px;
+  border-radius:8px;
+  margin-bottom:10px;
+  box-shadow:0 2px 8px rgba(0,0,0,0.08);
+}
+
+.card img{
+  width:80px;
+  height:60px;
+  object-fit:cover;
+  border-radius:6px;
+}
+
+.flex{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+}
+
+.error{
+  color:red;
+  text-align:center;
+}
+</style>
+</head>
+<body>
+
+<div class="header">MyShop Admin Panel</div>
+
+<div class="container">
+
+<h2>Add Product</h2>
+<form id="product-form">
+  <input type="hidden" id="product-id">
+  <input type="text" id="name" placeholder="Product Name" required>
+  <input type="number" id="price" placeholder="Price" required>
+
+  <!-- Multiple Images -->
+  <input type="text" id="images" placeholder="Image URLs (comma separated)" required>
+
+  <input type="number" id="quantity" placeholder="Stock Quantity" required>
+  <input type="text" id="description" placeholder="Product Description">
+
+  <select id="category">
+    <option>Mobile</option>
+    <option>Fashion</option>
+    <option>Electronics</option>
+    <option>Grocery</option>
+    <option>Appliances</option>
+    <option>Books</option>
+  </select>
+
+  <button type="submit" class="add-btn">Save Product</button>
+</form>
+
+<h2>Product List</h2>
+<div id="product-list"></div>
+
+<h2>Add Banner</h2>
+<form id="banner-form">
+  <input type="hidden" id="banner-id">
+  <input type="text" id="banner-image" placeholder="Banner Image URL" required>
+  <input type="text" id="banner-link" placeholder="Banner Link">
+  <button type="submit" class="add-btn">Save Banner</button>
+</form>
+
+<h2>Banner List</h2>
+<div id="banner-list"></div>
+
+<p id="error" class="error"></p>
+
+</div>
+
+<script type="module">
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm"
+
+const supabaseUrl = "https://ooiumaohawwtqtiodqcv.supabase.co"
+const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9vaXVtYW9oYXd3dHF0aW9kcWN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzExNDQ1MjMsImV4cCI6MjA4NjcyMDUyM30.S_1J8CFMa1KJUYfk1VYeUcFRqUo23NEGzNlxr5fQsvA"
+const supabase = createClient(supabaseUrl, supabaseKey)
+
+loadProducts()
+loadBanners()
+
+/* ================= PRODUCTS ================= */
+
+async function loadProducts(){
+  const { data, error } = await supabase
+    .from("products")
+    .select("*")
+    .order("id",{ascending:false})
+
+  if(error){
+    document.getElementById("error").innerText="Product Load Error"
+    return
+  }
+
+  const list=document.getElementById("product-list")
+  list.innerHTML=""
+
+  data.forEach(p=>{
+    const firstImage = p.images?.[0] || "https://via.placeholder.com/80"
+
+    list.innerHTML+=`
+    <div class="card">
+      <div class="flex">
+        <div>
+          <img src="${firstImage}">
+          <p><b>${p.name}</b></p>
+          <p>₹${p.price}</p>
+          <p>${p.category}</p>
+          <p>${p.description || ''}</p>
+        </div>
+        <div>
+          <button class="edit-btn" onclick='editProduct(${JSON.stringify(p)})'>Edit</button>
+          <button class="delete-btn" onclick="deleteProduct(${p.id})">Delete</button>
+        </div>
+      </div>
+    </div>`
+  })
+}
+
+document.getElementById("product-form")
+.addEventListener("submit",async(e)=>{
+  e.preventDefault()
+
+  const id=document.getElementById("product-id").value
+  const name=document.getElementById("name").value
+  const price=document.getElementById("price").value
+  const imagesInput=document.getElementById("images").value
+  const quantity=document.getElementById("quantity").value
+  const category=document.getElementById("category").value
+  const description=document.getElementById("description").value
+
+  const images = imagesInput.split(",").map(img=>img.trim())
+
+  if(id){
+    await supabase.from("products")
+      .update({name, price, images, category, quantity, description})
+      .eq("id",id)
+  }else{
+    await supabase.from("products")
+      .insert([{name, price, images, category, quantity, description}])
+  }
+
+  e.target.reset()
+  document.getElementById("product-id").value=""
+  loadProducts()
+})
+
+window.editProduct=(product)=>{
+  document.getElementById("product-id").value=product.id
+  document.getElementById("name").value=product.name
+  document.getElementById("price").value=product.price
+  document.getElementById("images").value=product.images?.join(", ")
+  document.getElementById("quantity").value=product.quantity
+  document.getElementById("category").value=product.category
+  document.getElementById("description").value=product.description
+}
+
+window.deleteProduct=async(id)=>{
+  if(confirm("Delete this product?")){
+    await supabase.from("products").delete().eq("id",id)
+    loadProducts()
+  }
+}
+
+/* ================= BANNERS ================= */
+
+async function loadBanners(){
+  const { data } = await supabase
+    .from("banners")
+    .select("*")
+    .order("id",{ascending:false})
+
+  const list=document.getElementById("banner-list")
+  list.innerHTML=""
+
+  data.forEach(b=>{
+    list.innerHTML+=`
+    <div class="card flex">
+      <img src="${b.image}" style="width:100px;height:60px;">
+      <div>
+        <button class="edit-btn" onclick='editBanner(${JSON.stringify(b)})'>Edit</button>
+        <button class="delete-btn" onclick="deleteBanner(${b.id})">Delete</button>
+      </div>
+    </div>`
+  })
+}
+
+document.getElementById("banner-form")
+.addEventListener("submit",async(e)=>{
+  e.preventDefault()
+
+  const id=document.getElementById("banner-id").value
+  const image=document.getElementById("banner-image").value
+  const link=document.getElementById("banner-link").value
+
+  if(id){
+    await supabase.from("banners").update({image,link}).eq("id",id)
+  }else{
+    await supabase.from("banners").insert([{image,link,active:true}])
+  }
+
+  e.target.reset()
+  document.getElementById("banner-id").value=""
+  loadBanners()
+})
+
+window.editBanner=(banner)=>{
+  document.getElementById("banner-id").value=banner.id
+  document.getElementById("banner-image").value=banner.image
+  document.getElementById("banner-link").value=banner.link
+}
+
+window.deleteBanner=async(id)=>{
+  if(confirm("Delete this banner?")){
+    await supabase.from("banners").delete().eq("id",id)
+    loadBanners()
+  }
+}
+</script>
+
+</body>
+</html>
