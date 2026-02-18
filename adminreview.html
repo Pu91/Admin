@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Review Panel</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100">
+
+<div class="max-w-6xl mx-auto p-6">
+
+  <h2 class="text-2xl font-bold mb-6">Pending Reviews</h2>
+
+  <div id="reviewContainer" class="space-y-4">
+    Loading...
+  </div>
+
+</div>
+
+<script type="module">
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm"
+
+const supabase = createClient(
+  "https://ooiumaohawwtqtiodqcv.supabase.co",
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9vaXVtYW9oYXd3dHF0aW9kcWN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzExNDQ1MjMsImV4cCI6MjA4NjcyMDUyM30.S_1J8CFMa1KJUYfk1VYeUcFRqUo23NEGzNlxr5fQsvA"
+)
+
+loadPendingReviews()
+
+/* ================= LOAD PENDING ================= */
+
+async function loadPendingReviews(){
+
+  const { data, error } = await supabase
+    .from("reviews")
+    .select(`
+      id,
+      user_name,
+      rating,
+      comment,
+      created_at,
+      products ( name )
+    `)
+    .eq("is_approved", false)
+    .order("created_at", {ascending:false})
+
+  const container = document.getElementById("reviewContainer")
+
+  if(error){
+    container.innerHTML = "Error loading reviews"
+    return
+  }
+
+  if(!data || data.length === 0){
+    container.innerHTML = "No pending reviews 🎉"
+    return
+  }
+
+  container.innerHTML = data.map(r => `
+    <div class="bg-white p-4 rounded shadow">
+
+      <div class="flex justify-between mb-2">
+        <div>
+          <p class="font-bold">${r.products?.name || "Product"}</p>
+          <p class="text-sm text-gray-500">
+            ${r.user_name} | ${new Date(r.created_at).toLocaleDateString()}
+          </p>
+        </div>
+        <div class="text-yellow-500">
+          ${"⭐".repeat(r.rating)}
+        </div>
+      </div>
+
+      <p class="mb-4">${r.comment || ""}</p>
+
+      <div class="flex gap-3">
+        <button onclick="approveReview(${r.id})"
+          class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
+          Approve
+        </button>
+
+        <button onclick="deleteReview(${r.id})"
+          class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">
+          Reject
+        </button>
+      </div>
+
+    </div>
+  `).join("")
+}
+
+/* ================= APPROVE ================= */
+
+window.approveReview = async (id) => {
+
+  await supabase
+    .from("reviews")
+    .update({ is_approved: true })
+    .eq("id", id)
+
+  alert("Review Approved ✅")
+  loadPendingReviews()
+}
+
+/* ================= DELETE ================= */
+
+window.deleteReview = async (id) => {
+
+  if(!confirm("Delete this review?")) return
+
+  await supabase
+    .from("reviews")
+    .delete()
+    .eq("id", id)
+
+  alert("Review Deleted ❌")
+  loadPendingReviews()
+}
+
+</script>
+
+</body>
+</html>
