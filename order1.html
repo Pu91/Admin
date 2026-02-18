@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Order Panel</title>
+
+<style>
+body{font-family:system-ui;background:#f4f6f9;margin:0}
+.container{max-width:1200px;margin:auto;padding:20px}
+h2{margin-bottom:20px}
+
+.topbar{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:15px}
+input,select{
+  padding:8px;
+  border-radius:6px;
+  border:1px solid #ddd;
+}
+
+.summary{display:flex;gap:15px;margin-bottom:20px;flex-wrap:wrap}
+.summary-box{
+  background:white;
+  padding:15px;
+  border-radius:10px;
+  box-shadow:0 3px 8px rgba(0,0,0,0.08);
+  min-width:120px;
+  text-align:center;
+}
+
+.card{
+  background:white;
+  padding:15px;
+  border-radius:12px;
+  margin-bottom:15px;
+  box-shadow:0 3px 10px rgba(0,0,0,0.08);
+}
+
+.status{
+  padding:4px 10px;
+  border-radius:20px;
+  color:white;
+  font-size:12px;
+}
+
+/* Status colors */
+.Pending { background:#f39c12; }
+.Accepted { background:#3498db; }
+.Rejected { background:#e74c3c; }
+.Shipped { background:#9b59b6; }
+.Delivered { background:#2ecc71; }
+.Cancelled { background:gray; }
+.Out-of-Delivery { background:#d35400; }
+
+button{
+  padding:6px 10px;
+  border:none;
+  border-radius:6px;
+  cursor:pointer;
+  font-size:13px;
+  background:#34495e;
+  color:white;
+  margin-right:5px;
+}
+
+/* Modal */
+.modal{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,0.5);
+  display:none;
+  justify-content:center;
+  align-items:center;
+  z-index:9999;
+}
+
+.modal-content{
+  background:white;
+  width:95%;
+  max-width:750px;
+  padding:20px;
+  border-radius:12px;
+  max-height:90vh;
+  overflow:auto;
+}
+
+img{
+  width:60px;
+  height:60px;
+  object-fit:cover;
+  border-radius:6px;
+}
+
+textarea{
+  resize:none;
+}
+
+.product-item{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-bottom:10px;
+}
+
+.product-item div{
+  flex:1;
+}
+
+@media(max-width:600px){
+  .product-item{
+    flex-direction:column;
+    align-items:flex-start;
+  }
+  .product-item img{
+    width:100%;
+    height:auto;
+  }
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h2>Admin Order Management</h2>
+
+<div class="topbar">
+  <input type="text" id="searchInput" placeholder="Search ID / Name / Phone">
+  <select id="statusFilter">
+    <option value="">All Status</option>
+    <option>Pending</option>
+    <option>Accepted</option>
+    <option>Shipped</option>
+    <option>Out of Delivery</option>
+    <option>Delivered</option>
+    <option>Cancelled</option>
+  </select>
+  <button onclick="loadOrders()">Filter</button>
+</div>
+
+<div class="summary" id="summaryBoxes">
+  <div class="summary-box">
+    <b>Total Orders</b>
+    <div id="totalOrders">0</div>
+  </div>
+  <div class="summary-box">
+    <b>Total Sales</b>
+    <div id="totalSales">₹0</div>
+  </div>
+  <div class="summary-box">
+    <b>Pending</b>
+    <div id="totalPending">0</div>
+  </div>
+  <div class="summary-box">
+    <b>Accepted</b>
+    <div id="totalAccepted">0</div>
+  </div>
+  <div class="summary-box">
+    <b>Shipped</b>
+    <div id="totalShipped">0</div>
+  </div>
+  <div class="summary-box">
+    <b>Out for Delivery</b>
+    <div id="totalOut">0</div>
+  </div>
+  <div class="summary-box">
+    <b>Delivered</b>
+    <div id="totalDelivered">0</div>
+  </div>
+</div>
+
+<div id="orders"></div>
+
+</div>
+
+<div class="modal" id="orderModal">
+  <div class="modal-content" id="modalContent"></div>
+</div>
+
+<script type="module">
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm"
+
+const supabase = createClient(
+  "https://ooiumaohawwtqtiodqcv.supabase.co",
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9vaXVtYW9oYXd3dHF0aW9kcWN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzExNDQ1MjMsImV4cCI6MjA4NjcyMDUyM30.S_1J8CFMa1KJUYfk1VYeUcFRqUo23NEGzNlxr5fQsvA"
+)
+
+const ordersDiv = document.getElementById("orders")
+const searchInput = document.getElementById("searchInput")
+const statusFilter = document.getElementById("statusFilter")
+
+function statusClass(status){
+  return status.replace(/ /g,'-')
+}
+
+async function loadOrders(){
+
+  const { data } = await supabase.from("orders").select("*").order("id",{ascending:false})
+  if(!data) return
+
+  let searchText = searchInput.value.toLowerCase()
+  let filtered = data.filter(order=>{
+    let matchSearch = order.id.toString().includes(searchText) ||
+                      order.customer_name.toLowerCase().includes(searchText) ||
+                      order.customer_phone.includes(searchText)
+    let matchStatus = statusFilter.value ? order.status === statusFilter.value : true
+    return matchSearch && matchStatus
+  })
+
+  ordersDiv.innerHTML=""
+  document.getElementById("totalOrders").innerText = filtered.length
+
+  let sales = 0, pending=0, accepted=0, shipped=0, outDel=0, delivered=0
+
+  filtered.forEach(order=>{
+    sales += order.total_amount
+    switch(order.status){
+      case "Pending": pending++; break
+      case "Accepted": accepted++; break
+      case "Shipped": shipped++; break
+      case "Out of Delivery": outDel++; break
+      case "Delivered": delivered++; break
+    }
+
+    ordersDiv.innerHTML += `
+      <div class="card">
+        <b>Order #${order.id}</b><br>
+        ${order.customer_name}<br>
+        ₹${order.total_amount}<br><br>
+        Status: <span class="status ${statusClass(order.status)}">${order.status}</span><br><br>
+        <button onclick="viewOrder(${order.id})">View Details</button>
+      </div>
+    `
+  })
+
+  document.getElementById("totalSales").innerText="₹"+sales
+  document.getElementById("totalPending").innerText=pending
+  document.getElementById("totalAccepted").innerText=accepted
+  document.getElementById("totalShipped").innerText=shipped
+  document.getElementById("totalOut").innerText=outDel
+  document.getElementById("totalDelivered").innerText=delivered
+}
+
+window.viewOrder = async function(orderId){
+
+  const { data:order } = await supabase
+    .from("orders")
+    .select("*")
+    .eq("id", orderId)
+    .single()
+
+  const { data:items } = await supabase
+    .from("order_items")
+    .select(`
+      quantity,
+      price,
+      subtotal,
+      product:products(id,name,image)
+    `)
+    .eq("order_id", orderId)
+
+  let subtotal=0
+  let html=`
+    <div id="shippingData"
+      data-id="${order.id}"
+      data-name="${order.customer_name}"
+      data-phone="${order.customer_phone}"
+      data-address="${order.address}"
+      data-city="${order.city}"
+      data-state="${order.state}"
+      data-pin="${order.pin_code}"
+      data-payment="${order.payment_method || 'COD'}">
+    </div>
+
+    <h3>Order #${order.id}</h3>
+    <p><b>Name:</b> ${order.customer_name}</p>
+    <p><b>Phone:</b> ${order.customer_phone}</p>
+    <p><b>Address:</b> ${order.address}, ${order.city}, ${order.state} - ${order.pin_code}</p>
+    <hr>
+    <h4>Items</h4>
+  `
+
+  items.forEach(item=>{
+    subtotal+=item.subtotal
+    html+=`
+      <div class="product-item">
+        <img src="${item.product?.image || ''}" alt="Product Image">
+        <div>
+          <b>${item.product?.name || 'Unknown Product'}</b><br>
+          ₹${item.price} × ${item.quantity} = ₹${item.subtotal}
+        </div>
+      </div>
+    `
+  })
+
+  let discount=order.discount||0
+  let grand=subtotal-discount
+
+  html+=`
+    <hr>
+    <p>Subtotal: ₹${subtotal}</p>
+    <p>Discount: ₹${discount}</p>
+    <h3>Total: ₹${grand}</h3>
+    <br>
+    <select id="statusSelect" onchange="updateStatus(${order.id},this.value)">
+      <option value="Pending" ${order.status==='Pending'?'selected':''}>Pending</option>
+      <option value="Accepted" ${order.status==='Accepted'?'selected':''}>Accepted</option>
+      <option value="Shipped" ${order.status==='Shipped'?'selected':''}>Shipped</option>
+      <option value="Out of Delivery" ${order.status==='Out of Delivery'?'selected':''}>Out of Delivery</option>
+      <option value="Delivered" ${order.status==='Delivered'?'selected':''}>Delivered</option>
+      <option value="Cancelled" ${order.status==='Cancelled'?'selected':''}>Cancelled</option>
+    </select>
+    <br><br>
+    <label><b>Order Note / Message:</b></label><br>
+    <textarea id="orderMessage" style="width:100%;padding:8px;border-radius:6px;border:1px solid #ddd;margin-bottom:10px;height:80px;">${order.message || ''}</textarea>
+    <br>
+    <button onclick="saveOrderMessage(${order.id})" style="background:#27ae60;">Save Note</button>
+    <button onclick="closeModal()">Close</button>
+  `
+
+  document.getElementById("modalContent").innerHTML=html
+  document.getElementById("orderModal").style.display="flex"
+}
+
+window.closeModal=function(){
+  document.getElementById("orderModal").style.display="none"
+}
+
+window.updateStatus=async function(orderId,status){
+  await supabase.from("orders").update({status:status}).eq("id",orderId)
+  alert("Status Updated")
+  closeModal()
+  loadOrders()
+}
+
+window.saveOrderMessage = async function(orderId){
+  const msg = document.getElementById("orderMessage").value
+  const { error } = await supabase.from("orders").update({message: msg}).eq("id", orderId)
+  if(error){ alert("Error saving message: "+error.message) }
+  else{ alert("Order note saved!"); loadOrders() }
+}
+
+loadOrders()
+</script>
+
+</body>
+</html>
